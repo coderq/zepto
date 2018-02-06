@@ -473,8 +473,18 @@
         span.trigger(event)
         t.assertTrue(event.isDefaultPrevented())
         t.assertTrue(event.isPropagationStopped())
-      }
+      },
 
+      // testPassive: function(t) {
+      //   var supportsPassive = false;
+      //   var opts = Object.defineProperty({}, 'passive', {
+      //     get: function() {
+      //       supportsPassive = true;
+      //     }
+      //   });
+      //   $(document).on('scroll', function() {}, opts);
+      //   t.assertTrue(supportsPassive);
+      // }
     })
   })()
   </script>

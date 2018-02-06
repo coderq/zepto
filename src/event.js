@@ -7,14 +7,28 @@
       slice = Array.prototype.slice,
       isFunction = $.isFunction,
       isString = function(obj){ return typeof obj == 'string' },
+      isObject = function(obj){ return toString.call(obj) === '[object Object]' },
       handlers = {},
       specialEvents={},
       focusinSupported = 'onfocusin' in window,
+      passiveSupported = isSupportPassive(),
       focus = { focus: 'focusin', blur: 'focusout' },
       hover = { mouseenter: 'mouseover', mouseleave: 'mouseout' }
 
   specialEvents.click = specialEvents.mousedown = specialEvents.mouseup = specialEvents.mousemove = 'MouseEvents'
 
+  function isSupportPassive () {
+    var supportsPassive = false;
+    try {
+      var opts = Object.defineProperty({}, 'passive', {
+        get: function() {
+          supportsPassive = true;
+        }
+      });
+      window.addEventListener("test", null, opts);
+    } catch (e) {} 
+    return supportsPassive;
+  }
   function zid(element) {
     return element._zid || (element._zid = _zid++)
   }
@@ -47,7 +61,15 @@
     return hover[type] || (focusinSupported && focus[type]) || type
   }
 
-  function add(element, events, fn, data, selector, delegator, capture){
+  function eventOptions(handler, options) {
+    options = options || {}
+    return passiveSupported ? {
+      capture: eventCapture(handler, options.capture),
+      passive: options.passive
+    } : eventCapture(handler, options.capture)
+  }
+
+  function add(element, events, fn, data, selector, delegator, options){
     var id = zid(element), set = (handlers[id] || (handlers[id] = []))
     events.split(/\s/).forEach(function(event){
       if (event == 'ready') return $(document).ready(fn)
@@ -73,16 +95,17 @@
       handler.i = set.length
       set.push(handler)
       if ('addEventListener' in element)
-        element.addEventListener(realEvent(handler.e), handler.proxy, eventCapture(handler, capture))
+        element.addEventListener(realEvent(handler.e), handler.proxy, eventOptions(handler, options))
     })
   }
-  function remove(element, events, fn, selector, capture){
+  function remove(element, events, fn, selector, options){
     var id = zid(element)
     ;(events || '').split(/\s/).forEach(function(event){
+      'string' !== typeof selector && (options = selector, selector = undefined)
       findHandlers(element, event, fn, selector).forEach(function(handler){
         delete handlers[id][handler.i]
       if ('removeEventListener' in element)
-        element.removeEventListener(realEvent(handler.e), handler.proxy, eventCapture(handler, capture))
+        element.removeEventListener(realEvent(handler.e), handler.proxy, eventOptions(handler, options))
       })
     })
   }
@@ -114,7 +137,7 @@
     return this.off(event, callback)
   }
   $.fn.one = function(event, selector, data, callback){
-    return this.on(event, selector, data, callback, 1)
+    return this.on(event, selector, data, callback, {once: 1})
   }
 
   var returnTrue = function(){return true},
@@ -175,25 +198,29 @@
     return this
   }
 
-  $.fn.on = function(event, selector, data, callback, one){
+  $.fn.on = function(event, selector, data, callback, options){
     var autoRemove, delegator, $this = this
     if (event && !isString(event)) {
       $.each(event, function(type, fn){
-        $this.on(type, selector, data, fn, one)
+        $this.on(type, selector, data, fn, options)
       })
       return $this
     }
 
     if (!isString(selector) && !isFunction(callback) && callback !== false)
-      callback = data, data = selector, selector = undefined
-    if (callback === undefined || data === false)
-      callback = data, data = undefined
+      !options && (options = callback), callback = data, data = selector, selector = undefined
+    if (isObject(callback) || callback === undefined || data === false) 
+      !options && (options = callback), callback = data, data = undefined
+    if (options === false) {
+      options = { capture: false }
+    }
 
-    if (callback === false) callback = returnFalse
+    if (!callback) callback = returnFalse
 
+    options = options || {}
     return $this.each(function(_, element){
-      if (one) autoRemove = function(e){
-        remove(element, e.type, callback)
+      if (options.once) autoRemove = function(e){
+        remove(element, e.type, callback, options)
         return callback.apply(this, arguments)
       }
 
@@ -205,7 +232,7 @@
         }
       }
 
-      add(element, event, callback, data, selector, delegator || autoRemove)
+      add(element, event, callback, data, selector, delegator || autoRemove, options)
     })
   }
   $.fn.off = function(event, selector, callback){
